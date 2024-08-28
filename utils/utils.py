@@ -3,17 +3,6 @@ from bs4 import BeautifulSoup
 import datetime
 
 
-def check_user(users, user):
-    try:
-        is_exist = list(users.find({'user': user}))
-
-        if len(is_exist) == 0:
-            users.insert_one({'user': user})
-
-    except Exception as ex:
-        print(f'The error in the check_user function: {ex}')
-
-
 def connection(link: str):
     headers = {
         'Accept': '*/*',
@@ -116,18 +105,20 @@ def get_data_match(link: str) -> dict:
     data_page = connection(link)
     try:
         match_blocks = data_page.find_all('div', class_='matchinfo')
-        league = match_blocks[len(match_blocks) - 1].find('h3').text
-        opponents = match_blocks[len(match_blocks) - 1].find('h1').text
+        match_block = match_blocks[len(match_blocks) - 1]
+        league = match_block.find('h3').text
+        opponents = match_block.find('h1').text
+        scores = match_block.find('h2').text
         rows = data_page.find('div', class_='tablediv').find_all('tr')
     except Exception as ex:
-        print(f'The error from the "count_rows" function: {ex}')
-        return get_data_match(link)
+        print(f'The error from the "get_data_match" function: {ex}')
     else:
         return {
             'row_quantity': len(rows),
             'last_row': rows[len(rows) - 1].find_all('td'),
             'opponents': opponents,
-            'league': league
+            'league': league,
+            'scores': scores.strip()
         }
 
 
@@ -135,7 +126,7 @@ def update_data_in_the_db(link: str, row_quantity: int, db_collection_matches):
     try:
         db_collection_matches.update_one({'link': link}, {'$set': {'row_quantity': row_quantity}})
     except Exception as ex:
-        print(f'The error from the "count_rows" function: {ex}')
+        print(f'The error from the "update_data_in_the_db" function: {ex}')
 
 
 def get_handicap(link: str, db_collection_matches) -> dict:
@@ -165,13 +156,13 @@ def get_all_users(collection_users) -> list:
         return users_list
 
 
-def get_deviation(collection_config) -> float:
+def get_config(collection_config) -> dict:
     try:
         deviation = list(collection_config.find())[0]
     except Exception as ex:
         print(f'The error from the "get_deviation" function: {ex}')
     else:
-        return deviation['deviation']
+        return deviation
 
 
 def change_deviation_in_the_db(collection_config, new_deviation: float) -> bool:
@@ -211,7 +202,49 @@ def get_signals_quantity_from_the_db(collection_matches, link: str) -> int:
                                                             'row_quantity': False, 'handicap': False})
 
     except Exception as ex:
-        print(print(f'The error from the "get_signals_quantity_from_the_db" function: {ex}'))
+        print(f'The error from the "get_signals_quantity_from_the_db" function: {ex}')
 
     else:
         return data['signals_quantity']
+
+
+def get_id_list_from_the_db(collection_users) -> list:
+    try:
+        id_list = list(collection_users.find().sort({'_id': -1}))
+    except Exception as ex:
+        print(f'The error from the "get_id_from_the_db" function: {ex}')
+    else:
+        return id_list
+
+
+def add_id_in_the_db(collection_users, user_id) -> bool:
+    try:
+        user_id = int(user_id)
+        is_find = collection_users.find_one({'user': user_id})
+        if is_find is None:
+            collection_users.insert_one({'user': user_id})
+            return True
+
+    except Exception as ex:
+        print(f'The error from the "add_id_in_the_db" function: {ex}')
+
+
+def delete_id_from_the_db(collection_users, nums: str, id_list: list) -> bool:
+    if ',' in nums:
+        nums = nums.split(', ')
+    elif nums.lower() == 'все':
+        nums = 'all'
+    else:
+        nums = list(nums)
+
+    try:
+        if nums != 'all':
+            for num in nums:
+                collection_users.delete_one({'user': id_list[int(num) - 1]['user']})
+        else:
+            collection_users.delete_many({})
+
+    except Exception as ex:
+        print(f'The error in the delete_id_from_the_db function: {ex}')
+    else:
+        return True
